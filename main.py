@@ -2,6 +2,7 @@ import sys
 from PySide6.QtWidgets import QApplication, QMessageBox
 
 from ui.main_window import MainWindow
+from ui.theme import STYLESHEET
 from model.loader import Predictor
 
 ###app = QApplication(sys.argv)
@@ -11,11 +12,12 @@ from model.loader import Predictor
 ##msg.exec_()
 ### 
 
-MODEL_PATH = "model/my_model.keras"
+MODEL_PATH = "model/model.tflite"
 PDF_PATH = "docs/model_explainer.pdf"
 
 def main():
     app = QApplication(sys.argv)
+    app.setStyleSheet(STYLESHEET)
 
     try:
         predictor = Predictor(MODEL_PATH)

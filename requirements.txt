@@ -8,3 +8,7 @@ ipython
 six
 Pillow
 catppuccin
+opencv-python
+PySide6
+PyMuPDF
+
