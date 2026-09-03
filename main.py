@@ -13,7 +13,7 @@ from model.loader import Predictor
 ### 
 
 MODEL_PATH = "model/model.tflite"
-PDF_PATH = "docs/model_explainer.pdf"
+#PDF_PATH = "docs/model_explainer.pdf"
 
 def main():
     app = QApplication(sys.argv)
@@ -25,7 +25,7 @@ def main():
         QMessageBox.critical(None, "Model Load Error", f"Could not load model:\n{e}")
         sys.exit(1)
 
-    window = MainWindow(predictor=predictor, pdf_path=PDF_PATH)
+    window = MainWindow(predictor=predictor)
     window.show()
 
     sys.exit(app.exec())
