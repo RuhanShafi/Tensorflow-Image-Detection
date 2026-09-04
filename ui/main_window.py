@@ -1,19 +1,21 @@
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QLabel,
-    QDockWidget, QPushButton, QStackedWidget
+    QDockWidget, QPushButton, QSplitter
 )
 from PySide6.QtCore import Qt
 
 from ui.theme import STYLESHEET, MOCHA
 from ui.webcam_view import WebcamView
+from ui.pdf_overlay import PDFOverlay
 
 
 class MainWindow(QMainWindow):
-    def __init__(self, predictor=None):
+    def __init__(self, predictor=None, pdf_path=None):
         super().__init__()
         self.predictor = predictor
+        self.pdf_path = pdf_path
         self.setWindowTitle("Face Classifier")
-        self.resize(1000, 700)
+        self.resize(1200, 700)
         self.setStyleSheet(STYLESHEET)
 
         self._build_central()
@@ -31,16 +33,24 @@ class MainWindow(QMainWindow):
         title.setAlignment(Qt.AlignCenter)
         layout.addWidget(title)
 
-        # --- Content area: webcam view lives here for now, will become a
-        # QStackedWidget holding WebcamView / ImageView / PDFOverlay once
-        # those other pieces exist. ---
-        self.content_stack = QStackedWidget()
-        self.content_stack.setObjectName("viewPanel")
+        # --- Content area: webcam + PDF side-by-side, PDF pane hidden by default ---
+        self.splitter = QSplitter(Qt.Horizontal)
+        self.splitter.setObjectName("viewPanel")
 
         self.webcam_view = WebcamView(on_predict=self._run_prediction)
-        self.content_stack.addWidget(self.webcam_view)  # index 0
+        self.splitter.addWidget(self.webcam_view)
 
-        layout.addWidget(self.content_stack, stretch=1)
+        self.pdf_overlay = PDFOverlay(
+            pdf_path=self.pdf_path,
+            on_close=self._hide_pdf
+        )
+        self.pdf_overlay.setVisible(False)
+        self.splitter.addWidget(self.pdf_overlay)
+
+        self.splitter.setStretchFactor(0, 1)
+        self.splitter.setStretchFactor(1, 1)
+
+        layout.addWidget(self.splitter, stretch=1)
         self.setCentralWidget(central)
 
     def _build_toolbar_dock(self):
@@ -58,6 +68,7 @@ class MainWindow(QMainWindow):
         self.webcam_btn = QPushButton("Webcam")
         self.static_btn = QPushButton("Static Image")
         self.pdf_toggle_btn = QPushButton("Toggle Model Info")
+        self.pdf_toggle_btn.clicked.connect(self._toggle_pdf)
 
         for btn in (self.webcam_btn, self.static_btn, self.pdf_toggle_btn):
             dock_layout.addWidget(btn)
@@ -65,16 +76,20 @@ class MainWindow(QMainWindow):
         dock.setWidget(dock_content)
         self.addDockWidget(Qt.RightDockWidgetArea, dock)
 
+    def _toggle_pdf(self):
+        self.pdf_overlay.setVisible(not self.pdf_overlay.isVisible())
+
+    def _hide_pdf(self):
+        self.pdf_overlay.setVisible(False)
+
     def _run_prediction(self, image):
-        """Callback passed to WebcamView — called periodically with an RGB frame."""
         if self.predictor is None:
-            return  # no model wired up yet
+            return
         label, confidence = self.predictor.predict(image)
-        print(f"{label} ({confidence:.2%})")  # placeholder until result_panel exists
+        print(f"{label} ({confidence:.2%})")
 
 
 if __name__ == "__main__":
-    # Quick standalone preview: `python -m ui.main_window`
     import sys
     from PySide6.QtWidgets import QApplication
 
