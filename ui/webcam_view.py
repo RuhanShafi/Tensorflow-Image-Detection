@@ -1,4 +1,5 @@
 import cv2
+import sys
 from PySide6.QtWidgets import QWidget, QVBoxLayout, QHBoxLayout, QLabel, QComboBox
 from PySide6.QtCore import Qt, QTimer
 from PySide6.QtGui import QImage, QPixmap
@@ -6,6 +7,41 @@ from PySide6.QtGui import QImage, QPixmap
 MAX_PROBE_INDEX = 5          # how many device indices to check on startup
 PREVIEW_INTERVAL_MS = 30     # ~33 fps preview
 PREDICT_EVERY_N_FRAMES = 15  # throttle inference vs. preview
+
+# ---------- Platform-specific tuning ----------
+# Each OS has a different "best" backend and different probe/preview costs:
+#   - Windows: CAP_DSHOW is far faster to fail on missing indices than the
+#     newer CAP_MSMF default, so probing stays snappy.
+#   - macOS: CAP_AVFOUNDATION is the only backend that reliably enumerates
+#     and triggers the OS camera-permission prompt correctly.
+#   - Linux: CAP_V4L2 avoids falling through to FFMPEG (which throws noisy
+#     but harmless errors on out-of-range indices).
+def _detect_platform_config():
+    if sys.platform.startswith("win"):
+        return {
+            "backend": cv2.CAP_DSHOW,
+            "max_probe_index": 5,
+            "preview_interval_ms": 30,
+        }
+    elif sys.platform == "darwin":
+        return {
+            "backend": cv2.CAP_AVFOUNDATION,
+            "max_probe_index": 4,       # macOS rarely exposes >2-3 devices; keep probing cheap
+            "preview_interval_ms": 33,
+        }
+    else:  # Linux and other POSIX
+        return {
+            "backend": cv2.CAP_V4L2,
+            "max_probe_index": 5,
+            "preview_interval_ms": 30,
+        }
+
+
+_PLATFORM_CONFIG = _detect_platform_config()
+CAMERA_BACKEND = _PLATFORM_CONFIG["backend"]
+MAX_PROBE_INDEX = _PLATFORM_CONFIG["max_probe_index"]
+PREVIEW_INTERVAL_MS = _PLATFORM_CONFIG["preview_interval_ms"]
+PREDICT_EVERY_N_FRAMES = 15  # throttle inference vs. preview; same across platforms
 
 
 class WebcamView(QWidget):
@@ -30,11 +66,13 @@ class WebcamView(QWidget):
         layout.setSpacing(10)
 
         controls = QHBoxLayout()
-        controls.addWidget(QLabel("Camera:"))
+        self.camera_label = QLabel("Camera:")
+        controls.addWidget(self.camera_label)
 
         self.device_combo = QComboBox()
         self.device_combo.currentIndexChanged.connect(self._on_device_changed)
         controls.addWidget(self.device_combo, stretch=1)
+        self.controls_row = controls
         layout.addLayout(controls)
 
         self.preview_label = QLabel("No camera")
@@ -49,14 +87,15 @@ class WebcamView(QWidget):
     # ---------- Device enumeration ----------
 
     def _populate_devices(self):
-        """Probe indices 0..MAX_PROBE_INDEX-1, keep the ones that actually open.
-        Index 0 (if available) is treated as the system default and selected first."""
+        """Probe indices 0..MAX_PROBE_INDEX-1 using the platform-appropriate
+        backend, keep the ones that actually open. Index 0 (if available) is
+        treated as the system default and selected first."""
         self.device_combo.blockSignals(True)
         self.device_combo.clear()
 
         found_any = False
         for index in range(MAX_PROBE_INDEX):
-            cap = cv2.VideoCapture(index)
+            cap = cv2.VideoCapture(index, CAMERA_BACKEND)
             if cap.isOpened():
                 label = "Default Camera" if index == 0 else f"Camera {index}"
                 self.device_combo.addItem(label, userData=index)
@@ -68,6 +107,11 @@ class WebcamView(QWidget):
         if not found_any:
             self.device_combo.addItem("No camera found", userData=None)
 
+        # Only show the selector when there's an actual choice to make
+        show_selector = self.device_combo.count() > 1
+        self.camera_label.setVisible(show_selector)
+        self.device_combo.setVisible(show_selector)
+
     # ---------- Camera lifecycle ----------
 
     def _start_camera(self, index):
@@ -77,7 +121,7 @@ class WebcamView(QWidget):
             self.preview_label.setText("No camera available")
             return
 
-        self.capture = cv2.VideoCapture(index)
+        self.capture = cv2.VideoCapture(index, CAMERA_BACKEND)
         if not self.capture.isOpened():
             self.preview_label.setText(f"Could not open camera {index}")
             self.capture = None
