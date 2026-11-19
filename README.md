@@ -1,5 +1,5 @@
-<h1 style="text-align: center;">Real Time Facial Detection System built using Tensorflow</h1>
-<h3 style="text-align: center;">By Ruhan Shafi</h3>
+<h1 align="center">Real Time Facial Detection System built using Tensorflow</h1>
+<h3 align="center">6By Ruhan Shafi</h3>
 
 ## Project Goal:
 

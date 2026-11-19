@@ -58,6 +58,65 @@ def _iou(box_a, box_b):
     return inter_area / union_area
 
 
+def padded_crop(frame_rgb, bbox):
+    """Expand a Haar box by FACE_CROP_PADDING before cropping, so the
+    classifier sees a framing closer to typical portrait/face-dataset
+    crops rather than a tight Haar rectangle."""
+    x, y, w, h = bbox
+    frame_h, frame_w = frame_rgb.shape[:2]
+
+    pad_w = int(w * FACE_CROP_PADDING)
+    pad_h = int(h * FACE_CROP_PADDING)
+
+    x0 = max(0, x - pad_w)
+    y0 = max(0, y - pad_h)
+    x1 = min(frame_w, x + w + pad_w)
+    y1 = min(frame_h, y + h + pad_h)
+
+    return frame_rgb[y0:y1, x0:x1]
+
+
+def draw_face_box(frame_rgb, bbox, prediction, scale=1.0):
+    """Draw one bounding box + label onto frame_rgb in place.
+
+    prediction: (label, confidence, is_confident) or None while pending.
+    scale: multiplier for line/text size, so boxes stay legible on
+    high-resolution still images as well as webcam frames.
+    """
+    x, y, w, h = bbox
+
+    if prediction is not None:
+        label, confidence, is_confident = prediction
+        box_color = BOX_COLOR if is_confident else UNCERTAIN_BOX_COLOR
+        text = f"{label} ({confidence:.0%})" if is_confident else "Uncertain"
+    else:
+        box_color = UNCERTAIN_BOX_COLOR
+        text = "..."
+
+    font_scale = 0.6 * scale
+    thickness = max(1, int(round(2 * scale)))
+    pad = int(round(4 * scale))
+
+    cv2.rectangle(frame_rgb, (x, y), (x + w, y + h), box_color, thickness)
+
+    (text_w, text_h), baseline = cv2.getTextSize(
+        text, cv2.FONT_HERSHEY_SIMPLEX, font_scale, thickness
+    )
+    label_y = max(y - 10 * scale, text_h + 10 * scale)
+    label_y = int(label_y)
+
+    cv2.rectangle(
+        frame_rgb,
+        (x, label_y - text_h - baseline - pad),
+        (x + text_w + 2 * pad, label_y + baseline - pad),
+        box_color, -1
+    )
+    cv2.putText(
+        frame_rgb, text, (x + pad, label_y - pad),
+        cv2.FONT_HERSHEY_SIMPLEX, font_scale, TEXT_BG_COLOR, thickness
+    )
+
+
 class TrackedFace:
     """One person currently being tracked across frames. Keeps its own
     smoothed prediction history so multiple people in frame don't share
@@ -243,25 +302,8 @@ class WebcamView(QWidget):
 
         self.tracked_faces = still_tracked
 
-    def _padded_crop(self, frame_rgb, bbox):
-        """Expand the Haar box by FACE_CROP_PADDING before cropping, so the
-        classifier sees a framing closer to typical portrait/face-dataset
-        crops rather than a tight Haar rectangle."""
-        x, y, w, h = bbox
-        frame_h, frame_w = frame_rgb.shape[:2]
-
-        pad_w = int(w * FACE_CROP_PADDING)
-        pad_h = int(h * FACE_CROP_PADDING)
-
-        x0 = max(0, x - pad_w)
-        y0 = max(0, y - pad_h)
-        x1 = min(frame_w, x + w + pad_w)
-        y1 = min(frame_h, y + h + pad_h)
-
-        return frame_rgb[y0:y1, x0:x1]
-
     def _run_classifier(self, frame_rgb, face: TrackedFace):
-        crop = self._padded_crop(frame_rgb, face.bbox)
+        crop = padded_crop(frame_rgb, face.bbox)
         if crop.size == 0:
             return
 
@@ -275,34 +317,7 @@ class WebcamView(QWidget):
         for face in self.tracked_faces:
             if face.missed_frames > 0:
                 continue
-
-            x, y, w, h = face.bbox
-
-            if face.smoothed is not None:
-                label, confidence, is_confident = face.smoothed
-                box_color = BOX_COLOR if is_confident else UNCERTAIN_BOX_COLOR
-                text = f"{label} ({confidence:.0%})" if is_confident else "Uncertain"
-            else:
-                box_color = UNCERTAIN_BOX_COLOR
-                text = "..."
-
-            cv2.rectangle(frame_rgb, (x, y), (x + w, y + h), box_color, 2)
-
-            (text_w, text_h), baseline = cv2.getTextSize(
-                text, cv2.FONT_HERSHEY_SIMPLEX, 0.6, 2
-            )
-            label_y = max(y - 10, text_h + 10)
-
-            cv2.rectangle(
-                frame_rgb,
-                (x, label_y - text_h - baseline - 4),
-                (x + text_w + 8, label_y + baseline - 4),
-                box_color, -1
-            )
-            cv2.putText(
-                frame_rgb, text, (x + 4, label_y - 4),
-                cv2.FONT_HERSHEY_SIMPLEX, 0.6, TEXT_BG_COLOR, 2
-            )
+            draw_face_box(frame_rgb, face.bbox, face.smoothed)
 
     def _show_frame(self, frame_rgb):
         h, w, ch = frame_rgb.shape

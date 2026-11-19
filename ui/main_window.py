@@ -1,11 +1,12 @@
 from PySide6.QtWidgets import (
     QMainWindow, QWidget, QVBoxLayout, QLabel,
-    QDockWidget, QPushButton, QSplitter
+    QDockWidget, QPushButton, QSplitter, QStackedWidget
 )
 from PySide6.QtCore import Qt
 
 from ui.theme import STYLESHEET, MOCHA
 from ui.webcam_view import WebcamView
+from ui.static_image_view import StaticImageView
 from ui.pdf_overlay import PDFOverlay
 
 
@@ -37,8 +38,14 @@ class MainWindow(QMainWindow):
         self.splitter = QSplitter(Qt.Horizontal)
         self.splitter.setObjectName("viewPanel")
 
+        # Webcam and static image share the left pane; only one is visible.
+        # Hiding WebcamView pauses its frame timer (see WebcamView.hideEvent).
+        self.view_stack = QStackedWidget()
         self.webcam_view = WebcamView(on_predict=self._run_prediction)
-        self.splitter.addWidget(self.webcam_view)
+        self.static_view = StaticImageView(on_predict=self._run_prediction)
+        self.view_stack.addWidget(self.webcam_view)
+        self.view_stack.addWidget(self.static_view)
+        self.splitter.addWidget(self.view_stack)
 
         self.pdf_overlay = PDFOverlay(
             pdf_path=self.pdf_path,
@@ -67,6 +74,8 @@ class MainWindow(QMainWindow):
 
         self.webcam_btn = QPushButton("Webcam")
         self.static_btn = QPushButton("Static Image")
+        self.webcam_btn.clicked.connect(self._show_webcam)
+        self.static_btn.clicked.connect(self._show_static_image)
         self.pdf_toggle_btn = QPushButton("Toggle Model Info")
         self.pdf_toggle_btn.clicked.connect(self._toggle_pdf)
 
@@ -75,6 +84,15 @@ class MainWindow(QMainWindow):
 
         dock.setWidget(dock_content)
         self.addDockWidget(Qt.RightDockWidgetArea, dock)
+
+    def _show_webcam(self):
+        self.view_stack.setCurrentWidget(self.webcam_view)
+
+    def _show_static_image(self):
+        # Always open the file browser; switch views only once an image is
+        # actually loaded, so cancelling leaves the current view untouched.
+        if self.static_view.prompt_for_image():
+            self.view_stack.setCurrentWidget(self.static_view)
 
     def _toggle_pdf(self):
         self.pdf_overlay.setVisible(not self.pdf_overlay.isVisible())
