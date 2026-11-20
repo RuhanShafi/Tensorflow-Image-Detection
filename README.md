@@ -1,5 +1,5 @@
 <h1 align="center">Real Time Facial Detection System built using Tensorflow</h1>
-<h3 align="center">6By Ruhan Shafi</h3>
+<h3 align="center">By Ruhan Shafi</h3>
 
 ## Project Goal:
 
@@ -18,7 +18,7 @@ The goal of this project is to create an image recognition model that can succes
 | UI framework | PySide6 |
 | Supported platforms | Windows, macOS, Linux |
 
-## Part 1: Model Construction
+## Model Construction
  
 ### Dataset
  
